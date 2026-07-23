@@ -1,0 +1,83 @@
+name: Meteora safety monitor
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Safe monitor command to run
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - delivery-test
+          - run
+          - rollover
+      confirm_rollover:
+        description: I changed POSITION_ADDRESS after manually moving the position
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: meteora-safety-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WALLET_ADDRESS: ${{ vars.WALLET_ADDRESS }}
+      POSITION_ADDRESS: ${{ vars.POSITION_ADDRESS }}
+      POSITION_CENTER_BIN_ID: ${{ vars.POSITION_CENTER_BIN_ID }}
+      INITIAL_DEPLOYED_SOL: ${{ vars.INITIAL_DEPLOYED_SOL }}
+      INITIAL_DEPLOYED_USD: ${{ vars.INITIAL_DEPLOYED_USD }}
+      EXTERNAL_COSTS_USD: ${{ vars.EXTERNAL_COSTS_USD }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      MONITOR_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
+      ROLLOVER_CONFIRMED: ${{ inputs.confirm_rollover && 'yes' || 'no' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Use Node.js 22
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - name: Test and check syntax
+        run: npm run build
+      - name: Run selected monitor mode
+        id: monitor
+        continue-on-error: true
+        run: |
+          case "$MONITOR_MODE" in
+            dry-run) npm run report -- dry-run ;;
+            delivery-test) npm run report -- delivery-test ;;
+            run) npm run report -- run ;;
+            rollover) npm run report -- rollover ;;
+            *) echo "Unknown monitor mode" >&2; exit 1 ;;
+          esac
+      - name: Commit approved monitor state only
+        if: always() && (env.MONITOR_MODE == 'run' || env.MONITOR_MODE == 'rollover')
+        run: |
+          if [ ! -f state/monitor.json ]; then
+            exit 0
+          fi
+          git add -- state/monitor.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update monitor state [skip ci]"
+          git push
+      - name: Fail visibly when monitoring or delivery failed
+        if: steps.monitor.outcome == 'failure'
+        run: exit 1
