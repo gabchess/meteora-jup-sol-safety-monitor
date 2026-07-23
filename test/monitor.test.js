@@ -48,7 +48,9 @@ const baseInput = {
       allTimeFees: { total: { usd: "45" } },
       unrealizedPnl: {
         balanceTokenX: { amount: "1000", usd: "700" },
-        balanceTokenY: { amount: "10.666666", usd: "800" }
+        balanceTokenY: { amount: "10.666666", usd: "800" },
+        unclaimedFeeTokenX: { amount: "5", usd: "3.50" },
+        unclaimedFeeTokenY: { amount: "0.086666", usd: "6.50" }
       }
     }
   },
@@ -79,6 +81,7 @@ test("a healthy position reports revenue, profit, return, and HODL comparison se
       tokenXAmount: result.report.tokenXAmount,
       tokenYSymbol: result.report.tokenYSymbol,
       tokenYAmount: result.report.tokenYAmount,
+      positionValueUsd: result.report.positionValueUsd,
       recommendedAction: result.report.recommendedAction,
       shouldDeliver: result.delivery.shouldDeliver
     },
@@ -92,9 +95,10 @@ test("a healthy position reports revenue, profit, return, and HODL comparison se
       hodlValueUsd: 1_491,
       alphaVsHodlUsd: 49,
       tokenXSymbol: "JUP",
-      tokenXAmount: 1000,
+      tokenXAmount: 1005,
       tokenYSymbol: "SOL",
-      tokenYAmount: 10.666666,
+      tokenYAmount: 10.753332,
+      positionValueUsd: 1510,
       recommendedAction: "No change. Continue monitoring.",
       shouldDeliver: true
     }
@@ -128,6 +132,8 @@ test("all-time fees are reported once and never added on top of PnL", () => {
 
   assert.equal(result.report.grossFeeRevenueUsd, 60);
   assert.equal(result.report.netPnlUsd, 15);
+  assert.equal(result.report.positionValueUsd, 1470);
+  assert.equal(result.report.unclaimedFeeValueUsd, 10);
   assert.notEqual(result.report.netPnlUsd, 75);
 });
 
@@ -171,6 +177,20 @@ test("an out-of-range position is critical and explains why", () => {
   assert.equal(result.report.status, "CRITICAL");
   assert.match(result.report.reasons.join(" "), /out of range/i);
   assert.match(result.report.recommendedAction, /Stop adding capital/);
+});
+
+test("single yellow and red bin-distance gates remain distinct", () => {
+  const yellow = structuredClone(baseInput);
+  yellow.snapshot.position.poolActiveBinId = 107;
+  const yellowResult = evaluateMonitorRun(yellow);
+  assert.equal(yellowResult.report.status, "YELLOW");
+  assert.match(yellowResult.report.reasons.join(" "), /seven bins/i);
+
+  const red = structuredClone(baseInput);
+  red.snapshot.position.poolActiveBinId = 109;
+  const redResult = evaluateMonitorRun(red);
+  assert.equal(redResult.report.status, "RED");
+  assert.match(redResult.report.reasons.join(" "), /nearest edge/i);
 });
 
 test("positive USD PnL still warns when holding SOL did materially better", () => {

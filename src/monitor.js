@@ -25,6 +25,10 @@ function roundMoney(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function roundTokenAmount(value) {
+  return Math.round((value + Number.EPSILON) * 1_000_000_000) / 1_000_000_000;
+}
+
 function getMonth(isoTimestamp) {
   return isoTimestamp.slice(0, 7);
 }
@@ -104,6 +108,7 @@ function formatMessage(report, poolAddress) {
     `Net PnL: ${formatMoney(report.netPnlUsd)} (${returnPct})`,
     `This month: ${formatMoney(report.monthNetPnlUsd)} net PnL · ${formatMoney(report.monthFeeRevenueUsd)} fees`,
     `All-time fees: ${formatMoney(report.grossFeeRevenueUsd)}`,
+    `Current position: ${formatMoney(report.positionValueUsd)} · unclaimed fees: ${formatMoney(report.unclaimedFeeValueUsd)}`,
     `vs holding SOL: ${formatMoney(report.alphaVsHodlUsd)}`,
     `Inventory: ${inventory}`,
     `Price range: ${range}`,
@@ -161,6 +166,22 @@ function evaluateValidMonitorRun(input) {
     position.unrealizedPnl.balanceTokenY.amount,
     "balanceTokenY.amount"
   );
+  const unclaimedFeeTokenXUsd = asFiniteNumber(
+    position.unrealizedPnl.unclaimedFeeTokenX.usd,
+    "unclaimedFeeTokenX.usd"
+  );
+  const unclaimedFeeTokenYUsd = asFiniteNumber(
+    position.unrealizedPnl.unclaimedFeeTokenY.usd,
+    "unclaimedFeeTokenY.usd"
+  );
+  const unclaimedFeeTokenXAmount = asFiniteNumber(
+    position.unrealizedPnl.unclaimedFeeTokenX.amount,
+    "unclaimedFeeTokenX.amount"
+  );
+  const unclaimedFeeTokenYAmount = asFiniteNumber(
+    position.unrealizedPnl.unclaimedFeeTokenY.amount,
+    "unclaimedFeeTokenY.amount"
+  );
   const tokenXSymbol = asNonEmptyString(pool.tokenXSymbol, "pool.tokenXSymbol");
   const tokenYSymbol = asNonEmptyString(pool.tokenYSymbol, "pool.tokenYSymbol");
   const activePrice = asFiniteNumber(position.poolActivePrice, "poolActivePrice");
@@ -197,6 +218,10 @@ function evaluateValidMonitorRun(input) {
     balanceTokenYUsd < 0 ||
     tokenXAmount < 0 ||
     tokenYAmount < 0 ||
+    unclaimedFeeTokenXUsd < 0 ||
+    unclaimedFeeTokenYUsd < 0 ||
+    unclaimedFeeTokenXAmount < 0 ||
+    unclaimedFeeTokenYAmount < 0 ||
     activePrice <= 0 ||
     poolCurrentPrice <= 0 ||
     minPrice <= 0 ||
@@ -251,11 +276,12 @@ function evaluateValidMonitorRun(input) {
   const dataAgeMinutes = (now.getTime() - fetchedAt.getTime()) / 60_000;
   const crossEndpointPriceDifferencePct =
     (Math.abs(activePrice - poolCurrentPrice) / poolCurrentPrice) * 100;
-  const redTriggerCount = [
-    centerDistanceBins >= 10,
-    nearestEdgeDistanceBins <= 5,
-    netReturnPct <= config.redLossPct
-  ].filter(Boolean).length;
+  const redTriggers = {
+    centerDistance: centerDistanceBins >= 10,
+    edgeDistance: nearestEdgeDistanceBins <= 5,
+    loss: netReturnPct <= config.redLossPct
+  };
+  const redTriggerCount = Object.values(redTriggers).filter(Boolean).length;
 
   const reasons = [];
   let status = "GREEN";
@@ -345,29 +371,29 @@ function evaluateValidMonitorRun(input) {
     }
     if (redTriggerCount >= 2) {
       reasons.push("Multiple red safety conditions occurred together.");
-      if (centerDistanceBins >= 10) {
+      if (redTriggers.centerDistance) {
         reasons.push("The active bin moved at least ten bins from the entry center.");
       }
-      if (nearestEdgeDistanceBins <= 5) {
+      if (redTriggers.edgeDistance) {
         reasons.push("Five or fewer bins remain to the nearest edge.");
       }
-      if (netReturnPct <= config.redLossPct) {
+      if (redTriggers.loss) {
         reasons.push("Net loss reached the red threshold.");
       }
     }
   } else if (
-    centerDistanceBins >= 10 ||
-    nearestEdgeDistanceBins <= 5 ||
-    netReturnPct <= config.redLossPct
+    redTriggers.centerDistance ||
+    redTriggers.edgeDistance ||
+    redTriggers.loss
   ) {
     status = "RED";
-    if (centerDistanceBins >= 10) {
+    if (redTriggers.centerDistance) {
       reasons.push("The active bin moved at least ten bins from the entry center.");
     }
-    if (nearestEdgeDistanceBins <= 5) {
+    if (redTriggers.edgeDistance) {
       reasons.push("Five or fewer bins remain to the nearest edge.");
     }
-    if (netReturnPct <= config.redLossPct) {
+    if (redTriggers.loss) {
       reasons.push("Net loss reached the red threshold.");
     }
   } else if (
@@ -408,6 +434,14 @@ function evaluateValidMonitorRun(input) {
     : null;
   const delivery = decideDelivery(status, now, priorState, config);
   const financialsAreTrusted = status !== "DATA_FAILURE";
+  const withdrawableTokenXAmount =
+    tokenXAmount + unclaimedFeeTokenXAmount;
+  const withdrawableTokenYAmount =
+    tokenYAmount + unclaimedFeeTokenYAmount;
+  const unclaimedFeeValueUsd =
+    unclaimedFeeTokenXUsd + unclaimedFeeTokenYUsd;
+  const positionValueUsd =
+    balanceTokenXUsd + balanceTokenYUsd + unclaimedFeeValueUsd;
 
   const report = {
     status,
@@ -435,15 +469,20 @@ function evaluateValidMonitorRun(input) {
     alphaVsHodlUsd: financialsAreTrusted ? roundMoney(alphaVsHodlUsd) : null,
     alphaVsHodlPct: financialsAreTrusted ? roundMoney(alphaVsHodlPct) : null,
     solPriceUsd: financialsAreTrusted ? roundMoney(solPriceUsd) : null,
-    positionValueUsd: financialsAreTrusted
-      ? roundMoney(balanceTokenXUsd + balanceTokenYUsd)
+    positionValueUsd: financialsAreTrusted ? roundMoney(positionValueUsd) : null,
+    unclaimedFeeValueUsd: financialsAreTrusted
+      ? roundMoney(unclaimedFeeValueUsd)
       : null,
     tokenXValueUsd: financialsAreTrusted ? roundMoney(balanceTokenXUsd) : null,
     tokenYValueUsd: financialsAreTrusted ? roundMoney(balanceTokenYUsd) : null,
     tokenXSymbol: financialsAreTrusted ? tokenXSymbol : null,
     tokenYSymbol: financialsAreTrusted ? tokenYSymbol : null,
-    tokenXAmount: financialsAreTrusted ? tokenXAmount : null,
-    tokenYAmount: financialsAreTrusted ? tokenYAmount : null,
+    tokenXAmount: financialsAreTrusted
+      ? roundTokenAmount(withdrawableTokenXAmount)
+      : null,
+    tokenYAmount: financialsAreTrusted
+      ? roundTokenAmount(withdrawableTokenYAmount)
+      : null,
     activePrice: financialsAreTrusted ? activePrice : null,
     poolCurrentPrice: financialsAreTrusted ? poolCurrentPrice : null,
     minPrice: financialsAreTrusted ? minPrice : null,
@@ -533,6 +572,7 @@ export function evaluateMonitorRun(input) {
       alphaVsHodlPct: null,
       solPriceUsd: null,
       positionValueUsd: null,
+      unclaimedFeeValueUsd: null,
       tokenXValueUsd: null,
       tokenYValueUsd: null,
       tokenXSymbol: null,

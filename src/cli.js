@@ -23,12 +23,21 @@ async function runFixture(args) {
   process.stdout.write(jsonOutput ? `${JSON.stringify(result, null, 2)}\n` : `${result.message}\n`);
 }
 
-async function runDryRun(args) {
-  const config = loadConfig();
+async function evaluateLiveData(
+  config,
+  { stateRequired = false, stateMustBeEmpty = false } = {}
+) {
   let priorState;
   let stateError;
   try {
-    priorState = await loadMonitorState(config.statePath);
+    priorState = await loadMonitorState(config.statePath, {
+      required: stateRequired
+    });
+    if (stateMustBeEmpty && priorState !== null) {
+      throw new Error(
+        "Monitor state already exists; initialization cannot overwrite financial history"
+      );
+    }
   } catch (error) {
     stateError = error instanceof Error ? error.message : String(error);
   }
@@ -44,13 +53,22 @@ async function runDryRun(args) {
     }
   }
 
-  const result = evaluateMonitorRun({
-    now: now.toISOString(),
-    config,
-    snapshot,
-    snapshotError: stateError || snapshotError,
-    priorState
-  });
+  return {
+    now,
+    stateError,
+    result: evaluateMonitorRun({
+      now: now.toISOString(),
+      config,
+      snapshot,
+      snapshotError: stateError || snapshotError,
+      priorState
+    })
+  };
+}
+
+async function runDryRun(args) {
+  const config = loadConfig();
+  const { result } = await evaluateLiveData(config);
   const jsonOutput = args.includes("--json");
   process.stdout.write(jsonOutput ? `${JSON.stringify(result, null, 2)}\n` : `${result.message}\n`);
 
@@ -92,39 +110,9 @@ async function runLive({ initialize = false } = {}) {
       "Set INITIALIZE_CONFIRMED=yes only after reconciling the live dry run with Meteora"
     );
   }
-  const now = new Date();
-  let priorState;
-  let stateError;
-  let snapshot;
-  let snapshotError;
-
-  try {
-    priorState = await loadMonitorState(config.statePath, {
-      required: !initialize
-    });
-    if (initialize && priorState !== null) {
-      throw new Error(
-        "Monitor state already exists; initialization cannot overwrite financial history"
-      );
-    }
-  } catch (error) {
-    stateError = error instanceof Error ? error.message : String(error);
-  }
-
-  if (!stateError) {
-    try {
-      snapshot = await fetchMeteoraSnapshot(config, { now });
-    } catch (error) {
-      snapshotError = error instanceof Error ? error.message : String(error);
-    }
-  }
-
-  const result = evaluateMonitorRun({
-    now: now.toISOString(),
-    config,
-    snapshot,
-    snapshotError: stateError || snapshotError,
-    priorState
+  const { now, result, stateError } = await evaluateLiveData(config, {
+    stateRequired: !initialize,
+    stateMustBeEmpty: initialize
   });
   process.stdout.write(`${result.message}\n`);
 

@@ -44,3 +44,10 @@ test("configuration enforces the 19.88 SOL-equivalent capital ceiling", () => {
     /19\.88 SOL-equivalent strategy ceiling/
   );
 });
+
+test("configuration requires an explicit public position address", () => {
+  assert.throws(
+    () => loadConfig({ ...validEnvironment, POSITION_ADDRESS: "" }),
+    /POSITION_ADDRESS is required/
+  );
+});

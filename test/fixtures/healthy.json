@@ -42,7 +42,9 @@
       "allTimeFees": { "total": { "usd": "45" } },
       "unrealizedPnl": {
         "balanceTokenX": { "amount": "1000", "usd": "700" },
-        "balanceTokenY": { "amount": "10.666666", "usd": "800" }
+        "balanceTokenY": { "amount": "10.666666", "usd": "800" },
+        "unclaimedFeeTokenX": { "amount": "5", "usd": "3.50" },
+        "unclaimedFeeTokenY": { "amount": "0.086666", "usd": "6.50" }
       }
     }
   },

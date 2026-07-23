@@ -96,3 +96,38 @@ test("the live adapter rejects a response that does not contain the configured p
     /configured open position was not returned/i
   );
 });
+
+test("the live adapter labels HTTP failures and timeouts by endpoint", async () => {
+  const poolResponse = () =>
+    new Response(
+      JSON.stringify({
+        address: config.poolAddress,
+        name: "JUP-SOL",
+        current_price: 0.0095,
+        pool_config: { bin_step: 80 },
+        token_x: { symbol: "JUP" },
+        token_y: { symbol: "SOL" }
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  const httpFailure = async (url) =>
+    new URL(url).pathname.startsWith("/pools/")
+      ? poolResponse()
+      : new Response("unavailable", { status: 503 });
+
+  await assert.rejects(
+    fetchMeteoraSnapshot(config, { fetchImpl: httpFailure }),
+    /Meteora position request returned HTTP 503/
+  );
+
+  const timeoutFailure = async (url) => {
+    if (new URL(url).pathname.startsWith("/pools/")) return poolResponse();
+    const error = new Error("aborted");
+    error.name = "TimeoutError";
+    throw error;
+  };
+  await assert.rejects(
+    fetchMeteoraSnapshot(config, { fetchImpl: timeoutFailure }),
+    /Meteora position request timed out/
+  );
+});

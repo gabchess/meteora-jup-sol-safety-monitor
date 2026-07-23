@@ -18,11 +18,19 @@ export async function fetchMeteoraSnapshot(
   );
 
   async function fetchJson(url, label) {
-    const response = await fetchImpl(url, {
-      method: "GET",
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(config.requestTimeoutMs)
-    });
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        method: "GET",
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(config.requestTimeoutMs)
+      });
+    } catch (error) {
+      if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+        throw new Error(`Meteora ${label} request timed out`);
+      }
+      throw new Error(`Meteora ${label} network request failed`);
+    }
     if (!response.ok) {
       throw new Error(`Meteora ${label} request returned HTTP ${response.status}`);
     }
