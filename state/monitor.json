@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "positionAddress": "GCMmRXEmiGqT79SoGietc8DtaYWKy3er56c5UnBSyAua",
+  "month": "2026-07",
+  "monthlyBaselineFeesUsd": 0,
+  "monthlyBaselineNetPnlUsd": 1.659172496708843,
+  "dailySnapshots": [
+    {
+      "date": "2026-07-23",
+      "checkedAt": "2026-07-23T23:52:11.392Z",
+      "status": "GREEN",
+      "netPnlUsd": 1.66,
+      "grossFeeRevenueUsd": 0,
+      "alphaVsHodlUsd": 3.72,
+      "solPriceUsd": 75.85
+    }
+  ],
+  "lastStatus": "GREEN",
+  "lastNetPnlUsd": 1.66,
+  "lastGrossFeeRevenueUsd": 0,
+  "lastDeliveredAt": "2026-07-23T23:52:11.392Z",
+  "lastHeartbeatDate": "2026-07-23"
+}
