@@ -1,0 +1,16 @@
+{
+  "name": "meteora-jup-sol-safety-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only Meteora JUP-SOL PnL and safety monitor",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run check && npm test",
+    "check": "node --check src/*.js test/*.js",
+    "report": "node src/cli.js",
+    "test": "node --test"
+  }
+}

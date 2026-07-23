@@ -1,0 +1,58 @@
+{
+  "now": "2026-07-23T15:00:00.000Z",
+  "config": {
+    "poolAddress": "C8Gr6AUuq9hEdSYJzoEpNcdjpojPZwqG5MtQbeouNNwg",
+    "positionAddress": "position-public-address",
+    "positionCenterBinId": 100,
+    "initialDeployedSol": 19.88,
+    "initialDeployedUsd": 1500,
+    "externalCostsUsd": 5,
+    "noiseLossPct": -0.5,
+    "yellowAlphaPct": -2,
+    "redLossPct": -2,
+    "criticalLossPct": -5,
+    "maxDataAgeMinutes": 15,
+    "heartbeatHourUtc": 15
+  },
+  "snapshot": {
+    "fetchedAt": "2026-07-23T14:58:00.000Z",
+    "solPriceUsd": 75,
+    "pool": {
+      "address": "C8Gr6AUuq9hEdSYJzoEpNcdjpojPZwqG5MtQbeouNNwg",
+      "name": "JUP-SOL",
+      "binStep": 80,
+      "currentPrice": 0.0095,
+      "tokenXSymbol": "JUP",
+      "tokenYSymbol": "SOL"
+    },
+    "position": {
+      "positionAddress": "position-public-address",
+      "isClosed": false,
+      "lowerBinId": 85,
+      "upperBinId": 114,
+      "poolActiveBinId": 102,
+      "poolActivePrice": "0.0095",
+      "minPrice": "0.0085",
+      "maxPrice": "0.0114",
+      "isOutOfRange": false,
+      "pnlUsd": "45",
+      "pnlPctChange": "3",
+      "allTimeDeposits": { "total": { "usd": "1500" } },
+      "allTimeWithdrawals": { "total": { "usd": "0" } },
+      "allTimeFees": { "total": { "usd": "45" } },
+      "unrealizedPnl": {
+        "balanceTokenX": { "amount": "1000", "usd": "700" },
+        "balanceTokenY": { "amount": "10.666666", "usd": "800" },
+        "unclaimedFeeTokenX": { "amount": "5", "usd": "3.50" },
+        "unclaimedFeeTokenY": { "amount": "0.086666", "usd": "6.50" }
+      }
+    }
+  },
+  "priorState": {
+    "month": "2026-07",
+    "monthlyBaselineFeesUsd": 20,
+    "monthlyBaselineNetPnlUsd": 10,
+    "lastStatus": "GREEN",
+    "lastDeliveredAt": null
+  }
+}
