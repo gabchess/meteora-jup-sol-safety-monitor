@@ -193,6 +193,7 @@ variables → Actions → Variables**:
 | `INITIAL_DEPLOYED_SOL` | Actual SOL-equivalent used, no more than 19.88 |
 | `INITIAL_DEPLOYED_USD` | Actual USD value at entry |
 | `EXTERNAL_COSTS_USD` | Entry costs not included in Meteora PnL |
+| `MONITOR_ENABLED` | `false` until initialization is complete |
 
 Do not round the deployed amount up to 19.88 if you used less.
 
@@ -223,12 +224,16 @@ or a material PnL difference is not. Fix the data before continuing.
 
 ### 3. Initialize live monitoring
 
-Run the workflow again with mode `run`.
+Run the workflow again with mode `initialize` and check the initialization
+confirmation box.
 
 This first live run creates the monthly baseline and daily snapshot. Check that
-its Telegram report matches the dry run. The hourly schedule then checks at
-minute 17. A healthy position sends one daily heartbeat instead of one message
-per hour.
+its Telegram report matches the dry run. Then set `MONITOR_ENABLED=true`. The
+hourly schedule checks at minute 17. A healthy position sends one daily
+heartbeat instead of one message per hour.
+
+The monitor refuses to recreate a missing state file during a normal `run`.
+That is deliberate: a silent reset would erase monthly and rollover history.
 
 ## What each phone alert means
 
@@ -298,17 +303,24 @@ On the first day of each UTC month, write down:
 
 The main number is month net PnL in USD. Fees are revenue, not proof of profit.
 If fees are positive but net PnL is negative, the strategy lost money.
+The month baseline starts at the first successful hourly run after the UTC
+month changes.
 
 ## When you manually rebalance
 
-1. Review and sign the close, withdrawal, swap, and new deposit yourself.
-2. Record the old and new position addresses and all costs.
-3. Update the six GitHub variables with the new position facts.
-4. Run the monitor workflow in `rollover` mode.
-5. Check the rollover confirmation box.
-6. Run `dry-run`.
-7. Reconcile the new report with Meteora.
-8. Run `run` once to start the new baseline.
+1. Run one final live report for the old position.
+2. Set `MONITOR_ENABLED=false`.
+3. Review and sign the close, withdrawal, swap, and new deposit yourself.
+4. Record the old and new position addresses and all costs.
+5. Update `POSITION_ADDRESS`, `POSITION_CENTER_BIN_ID`, and
+   `EXTERNAL_COSTS_USD`. Keep the original `INITIAL_DEPLOYED_SOL` and
+   `INITIAL_DEPLOYED_USD` so the lifetime HODL benchmark stays continuous.
+6. Run the monitor workflow in `rollover` mode.
+7. Check the rollover confirmation box.
+8. Run `dry-run`.
+9. Reconcile the new report with Meteora.
+10. Run `run` once and confirm lifetime PnL and fees include the old position.
+11. Set `MONITOR_ENABLED=true`.
 
 Changing the address without the explicit rollover makes the monitor emit
 `DATA_FAILURE`. This prevents it from silently watching the wrong position.
@@ -329,3 +341,9 @@ Stop and inspect before signing if:
 The report is a safety gate, not a guarantee. Its job is to expose loss,
 distance, bad data, and failed delivery early enough for you to make the
 wallet decision yourself.
+
+Meteora's public responses do not currently include the time when its internal
+index last updated. The monitor records when it fetched both responses and
+checks that their current prices agree. It still cannot prove the internal
+index age, so a matching report is safer than one endpoint alone, not a
+guarantee of fresh upstream data.

@@ -72,6 +72,11 @@ export function loadConfig(environment = process.env) {
   if (config.initialDeployedSol <= 0 || config.initialDeployedUsd <= 0) {
     throw new Error("Initial deployed capital must be greater than zero");
   }
+  if (config.initialDeployedSol > 19.88) {
+    throw new Error(
+      "INITIAL_DEPLOYED_SOL cannot exceed the 19.88 SOL-equivalent strategy ceiling"
+    );
+  }
   if (config.externalCostsUsd < 0) {
     throw new Error("EXTERNAL_COSTS_USD cannot be negative");
   }

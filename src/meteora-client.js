@@ -57,6 +57,7 @@ export async function fetchMeteoraSnapshot(
       address: poolPayload.address,
       name: poolPayload.name,
       binStep: poolPayload.pool_config?.bin_step,
+      currentPrice: poolPayload.current_price,
       tokenXSymbol: poolPayload.token_x?.symbol,
       tokenYSymbol: poolPayload.token_y?.symbol
     },

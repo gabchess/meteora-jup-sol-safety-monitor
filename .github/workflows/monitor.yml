@@ -13,10 +13,16 @@ on:
         options:
           - dry-run
           - delivery-test
+          - initialize
           - run
           - rollover
       confirm_rollover:
         description: I changed POSITION_ADDRESS after manually moving the position
+        required: false
+        default: false
+        type: boolean
+      confirm_initialize:
+        description: I reconciled the dry run with the live Meteora position
         required: false
         default: false
         type: boolean
@@ -30,6 +36,7 @@ concurrency:
 
 jobs:
   monitor:
+    if: github.event_name == 'workflow_dispatch' || vars.MONITOR_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -43,6 +50,7 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       MONITOR_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
       ROLLOVER_CONFIRMED: ${{ inputs.confirm_rollover && 'yes' || 'no' }}
+      INITIALIZE_CONFIRMED: ${{ inputs.confirm_initialize && 'yes' || 'no' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -60,12 +68,13 @@ jobs:
           case "$MONITOR_MODE" in
             dry-run) npm run report -- dry-run ;;
             delivery-test) npm run report -- delivery-test ;;
+            initialize) npm run report -- initialize ;;
             run) npm run report -- run ;;
             rollover) npm run report -- rollover ;;
             *) echo "Unknown monitor mode" >&2; exit 1 ;;
           esac
       - name: Commit approved monitor state only
-        if: always() && (env.MONITOR_MODE == 'run' || env.MONITOR_MODE == 'rollover')
+        if: always() && (env.MONITOR_MODE == 'initialize' || env.MONITOR_MODE == 'run' || env.MONITOR_MODE == 'rollover')
         run: |
           if [ ! -f state/monitor.json ]; then
             exit 0

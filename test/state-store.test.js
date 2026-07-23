@@ -8,7 +8,12 @@ import { loadMonitorState, saveMonitorState } from "../src/state-store.js";
 
 test("missing state is allowed only for first-run initialization", async () => {
   const directory = await mkdtemp(join(tmpdir(), "meteora-state-"));
-  assert.equal(await loadMonitorState(join(directory, "missing.json")), null);
+  const path = join(directory, "missing.json");
+  assert.equal(await loadMonitorState(path), null);
+  await assert.rejects(
+    loadMonitorState(path, { required: true }),
+    /Monitor state is missing/
+  );
 });
 
 test("state is saved atomically and loaded without losing accounting fields", async () => {

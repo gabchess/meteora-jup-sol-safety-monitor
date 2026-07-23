@@ -27,6 +27,7 @@ const baseInput = {
       address: "C8Gr6AUuq9hEdSYJzoEpNcdjpojPZwqG5MtQbeouNNwg",
       name: "JUP-SOL",
       binStep: 80,
+      currentPrice: 0.0095,
       tokenXSymbol: "JUP",
       tokenYSymbol: "SOL"
     },
@@ -116,6 +117,37 @@ test("positive fees never hide a negative net result", () => {
   assert.doesNotMatch(result.message, /profit/i);
 });
 
+test("all-time fees are reported once and never added on top of PnL", () => {
+  const input = structuredClone(baseInput);
+  input.snapshot.position.pnlUsd = "20";
+  input.snapshot.position.allTimeFees.total.usd = "60";
+  input.snapshot.position.unrealizedPnl.balanceTokenX.usd = "650";
+  input.snapshot.position.unrealizedPnl.balanceTokenY.usd = "810";
+
+  const result = evaluateMonitorRun(input);
+
+  assert.equal(result.report.grossFeeRevenueUsd, 60);
+  assert.equal(result.report.netPnlUsd, 15);
+  assert.notEqual(result.report.netPnlUsd, 75);
+});
+
+test("noise, red loss, and critical loss thresholds are distinct", () => {
+  const noise = structuredClone(baseInput);
+  noise.snapshot.position.pnlUsd = "-1";
+  noise.snapshot.position.unrealizedPnl.balanceTokenY.usd = "754";
+  assert.equal(evaluateMonitorRun(noise).report.status, "GREEN");
+
+  const red = structuredClone(baseInput);
+  red.snapshot.position.pnlUsd = "-30";
+  red.snapshot.position.unrealizedPnl.balanceTokenY.usd = "725";
+  assert.equal(evaluateMonitorRun(red).report.status, "RED");
+
+  const critical = structuredClone(baseInput);
+  critical.snapshot.position.pnlUsd = "-80";
+  critical.snapshot.position.unrealizedPnl.balanceTokenY.usd = "675";
+  assert.equal(evaluateMonitorRun(critical).report.status, "CRITICAL");
+});
+
 test("malformed financial data fails safe instead of crashing", () => {
   const input = structuredClone(baseInput);
   input.snapshot.position.pnlUsd = "not-a-number";
@@ -163,6 +195,16 @@ test("an unexpected position width fails safe", () => {
   assert.match(result.report.reasons.join(" "), /30 bins/i);
 });
 
+test("an off-center recorded entry bin fails safe", () => {
+  const input = structuredClone(baseInput);
+  input.config.positionCenterBinId = 86;
+
+  const result = evaluateMonitorRun(input);
+
+  assert.equal(result.report.status, "DATA_FAILURE");
+  assert.match(result.report.reasons.join(" "), /not centered/i);
+});
+
 test("a mismatched pool or closed position fails safe", () => {
   const wrongPool = structuredClone(baseInput);
   wrongPool.snapshot.pool.binStep = 100;
@@ -179,12 +221,24 @@ test("a mismatched pool or closed position fails safe", () => {
   assert.match(closedResult.report.reasons.join(" "), /closed/i);
 });
 
+test("cross-endpoint price disagreement fails safe", () => {
+  const input = structuredClone(baseInput);
+  input.snapshot.pool.currentPrice = 0.02;
+
+  const result = evaluateMonitorRun(input);
+
+  assert.equal(result.report.status, "DATA_FAILURE");
+  assert.match(result.report.reasons.join(" "), /disagree.*current price/i);
+});
+
 test("stale data and accounting mismatches override otherwise healthy results", () => {
   const stale = structuredClone(baseInput);
   stale.snapshot.fetchedAt = "2026-07-23T14:00:00.000Z";
   const staleResult = evaluateMonitorRun(stale);
 
   assert.equal(staleResult.report.status, "DATA_FAILURE");
+  assert.equal(staleResult.report.netPnlUsd, null);
+  assert.equal(staleResult.report.grossFeeRevenueUsd, null);
   assert.match(staleResult.report.reasons.join(" "), /stale/i);
 
   const mismatch = structuredClone(baseInput);
@@ -193,6 +247,12 @@ test("stale data and accounting mismatches override otherwise healthy results", 
 
   assert.equal(mismatchResult.report.status, "DATA_FAILURE");
   assert.match(mismatchResult.report.reasons.join(" "), /independent PnL/i);
+
+  stale.priorState = null;
+  const firstRunFailure = evaluateMonitorRun(stale);
+  assert.equal(firstRunFailure.nextState.month, undefined);
+  assert.equal(firstRunFailure.nextState.monthlyBaselineFeesUsd, undefined);
+  assert.equal(firstRunFailure.nextState.dailySnapshots, undefined);
 });
 
 test("green checks are suppressed except for one daily heartbeat", () => {
@@ -213,6 +273,12 @@ test("green checks are suppressed except for one daily heartbeat", () => {
 
   heartbeat.priorState.lastHeartbeatDate = "2026-07-23";
   assert.equal(evaluateMonitorRun(heartbeat).delivery.shouldDeliver, false);
+
+  const catchUp = structuredClone(baseInput);
+  catchUp.now = "2026-07-23T16:00:00.000Z";
+  catchUp.snapshot.fetchedAt = "2026-07-23T15:58:00.000Z";
+  catchUp.priorState.lastHeartbeatDate = "2026-07-22";
+  assert.equal(evaluateMonitorRun(catchUp).delivery.kind, "heartbeat");
 });
 
 test("danger alerts are rate-limited, reminded, and followed by recovery", () => {
@@ -224,10 +290,10 @@ test("danger alerts are rate-limited, reminded, and followed by recovery", () =>
   danger.priorState.lastDeliveredAt = "2026-07-23T15:00:00.000Z";
 
   const firstAlert = evaluateMonitorRun(danger);
-  assert.equal(firstAlert.report.status, "RED");
+  assert.equal(firstAlert.report.status, "CRITICAL");
   assert.equal(firstAlert.delivery.kind, "alert");
 
-  danger.priorState.lastStatus = "RED";
+  danger.priorState.lastStatus = "CRITICAL";
   assert.equal(evaluateMonitorRun(danger).delivery.shouldDeliver, false);
 
   danger.now = "2026-07-23T22:01:00.000Z";
@@ -246,6 +312,31 @@ test("danger alerts are rate-limited, reminded, and followed by recovery", () =>
   assert.equal(recovery.report.status, "GREEN");
   assert.equal(recovery.delivery.shouldDeliver, true);
   assert.equal(recovery.delivery.kind, "recovery");
+});
+
+test("two simultaneous red range conditions escalate to critical", () => {
+  const input = structuredClone(baseInput);
+  input.snapshot.position.poolActiveBinId = 110;
+
+  const result = evaluateMonitorRun(input);
+
+  assert.equal(result.report.status, "CRITICAL");
+  assert.match(result.report.reasons.join(" "), /multiple red/i);
+});
+
+test("rollover carry keeps lifetime profit and fee totals continuous", () => {
+  const input = structuredClone(baseInput);
+  input.priorState.carriedNetPnlUsd = 100;
+  input.priorState.carriedGrossFeeRevenueUsd = 50;
+
+  const result = evaluateMonitorRun(input);
+
+  assert.equal(result.report.currentPositionNetPnlUsd, 40);
+  assert.equal(result.report.netPnlUsd, 140);
+  assert.equal(result.report.grossFeeRevenueUsd, 95);
+  assert.equal(result.report.alphaVsHodlUsd, 149);
+  assert.equal(result.nextState.lastNetPnlUsd, 140);
+  assert.equal(result.nextState.lastGrossFeeRevenueUsd, 95);
 });
 
 test("a UTC month boundary starts a new zero baseline", () => {

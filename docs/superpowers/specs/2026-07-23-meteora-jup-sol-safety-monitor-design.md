@@ -98,7 +98,9 @@ The monitor treats safety as a precedence system. Data failure, accounting incon
 - `HODL value` is the initial deployed SOL amount multiplied by the current SOL price, adjusted only by explicit later capital flows.
 - `alpha versus HODL` is strategy value minus HODL value.
 - `month-to-date fee revenue` and `month-to-date PnL` are differences from a durable snapshot captured at the first successful run of each UTC calendar month.
-- The first live baseline is recorded only after the position exists and the owner confirms its address and initial deployed SOL equivalent.
+- The first live baseline is recorded only through explicit initialization
+  after the position exists and the owner confirms its address, initial
+  deployed SOL equivalent, and dry-run values.
 
 ### Accounting integrity
 
@@ -107,7 +109,10 @@ The monitor treats safety as a precedence system. Data failure, accounting incon
 - The monitor uses a small rounding tolerance. A larger mismatch produces a data-quality safety state and suppresses financial-action advice.
 - Missing, malformed, non-finite, negative-where-impossible, or stale values are unsafe.
 - Fee revenue is never added to a PnL field that already includes fees.
-- Values carry source timestamps and are not silently reused after a failed fetch.
+- Meteora's current pool and position responses do not expose the internal
+  index-update timestamp. Values carry retrieval timestamps, and the monitor
+  cross-checks the current price across the independent pool and position
+  responses. It does not claim to prove upstream index age.
 
 ### Safety states
 

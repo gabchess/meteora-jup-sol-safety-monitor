@@ -20,6 +20,7 @@ test("the live adapter selects the configured open position from Meteora", async
         JSON.stringify({
           address: config.poolAddress,
           name: "JUP-SOL",
+          current_price: 0.0095,
           pool_config: { bin_step: 80 },
           token_x: { symbol: "JUP" },
           token_y: { symbol: "SOL" }
@@ -63,6 +64,7 @@ test("the live adapter selects the configured open position from Meteora", async
   assert.equal(snapshot.position.positionAddress, config.positionAddress);
   assert.equal(snapshot.pool.address, config.poolAddress);
   assert.equal(snapshot.pool.binStep, 80);
+  assert.equal(snapshot.pool.currentPrice, 0.0095);
   assert.equal(snapshot.pool.tokenXSymbol, "JUP");
   assert.equal(snapshot.solPriceUsd, "75.25");
   assert.equal(snapshot.fetchedAt, "2026-07-23T15:00:00.000Z");
@@ -75,6 +77,7 @@ test("the live adapter rejects a response that does not contain the configured p
         JSON.stringify({
           address: config.poolAddress,
           name: "JUP-SOL",
+          current_price: 0.0095,
           pool_config: { bin_step: 80 },
           token_x: { symbol: "JUP" },
           token_y: { symbol: "SOL" }

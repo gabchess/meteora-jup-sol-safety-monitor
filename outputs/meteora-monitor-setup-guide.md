@@ -32,8 +32,9 @@ swap, deposit, claim, rebalance, and withdrawal yourself.
     USD, and entry costs.
 13. Add those public values as private-repository Actions variables.
 14. Run `dry-run` and compare every number with Meteora.
-15. Run `run` once. Confirm Telegram matches.
-16. Let the hourly monitor take over reporting.
+15. Run `initialize` with its confirmation box checked. Confirm Telegram.
+16. Set `MONITOR_ENABLED=true`.
+17. Let the hourly monitor take over reporting.
 
 ## Phone response
 

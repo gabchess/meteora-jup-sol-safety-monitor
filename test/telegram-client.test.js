@@ -70,6 +70,34 @@ test("Telegram malformed responses and missing credentials fail visibly", async 
   );
 });
 
+test("Telegram timeout and network failure are actionable and never leak the token", async () => {
+  const timeoutFetch = async () => {
+    const error = new Error("request aborted for 123456:top-secret-token");
+    error.name = "TimeoutError";
+    throw error;
+  };
+  const networkFetch = async () => {
+    throw new Error("DNS failed for 123456:top-secret-token");
+  };
+
+  await assert.rejects(
+    sendTelegramMessage(config, "test", { fetchImpl: timeoutFetch }),
+    (error) => {
+      assert.match(error.message, /timed out/i);
+      assert.doesNotMatch(error.message, /top-secret-token/);
+      return true;
+    }
+  );
+  await assert.rejects(
+    sendTelegramMessage(config, "test", { fetchImpl: networkFetch }),
+    (error) => {
+      assert.match(error.message, /network request failed/i);
+      assert.doesNotMatch(error.message, /top-secret-token/);
+      return true;
+    }
+  );
+});
+
 test("Telegram chat lookup returns unique chat IDs after the owner messages the bot", async () => {
   const fetchImpl = async () =>
     new Response(

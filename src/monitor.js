@@ -54,7 +54,7 @@ function decideDelivery(status, now, priorState, config) {
       return { shouldDeliver: true, kind: "recovery" };
     }
     if (
-      now.getUTCHours() === config.heartbeatHourUtc &&
+      now.getUTCHours() >= config.heartbeatHourUtc &&
       priorState?.lastHeartbeatDate !== date
     ) {
       return { shouldDeliver: true, kind: "heartbeat" };
@@ -122,8 +122,17 @@ function evaluateValidMonitorRun(input) {
   const pool = input.snapshot.pool;
   const position = input.snapshot.position;
   const config = input.config;
+  const priorState = input.priorState ?? {};
+  if (
+    priorState.positionAddress &&
+    priorState.positionAddress !== config.positionAddress
+  ) {
+    throw new Error(
+      "The position address changed without an explicit state rollover"
+    );
+  }
 
-  const grossFeeRevenueUsd = asFiniteNumber(
+  const currentPositionGrossFeeRevenueUsd = asFiniteNumber(
     position.allTimeFees.total.usd,
     "allTimeFees.total.usd"
   );
@@ -155,6 +164,10 @@ function evaluateValidMonitorRun(input) {
   const tokenXSymbol = asNonEmptyString(pool.tokenXSymbol, "pool.tokenXSymbol");
   const tokenYSymbol = asNonEmptyString(pool.tokenYSymbol, "pool.tokenYSymbol");
   const activePrice = asFiniteNumber(position.poolActivePrice, "poolActivePrice");
+  const poolCurrentPrice = asFiniteNumber(
+    pool.currentPrice,
+    "pool.currentPrice"
+  );
   const minPrice = asFiniteNumber(position.minPrice, "minPrice");
   const maxPrice = asFiniteNumber(position.maxPrice, "maxPrice");
   const externalCostsUsd = asFiniteNumber(config.externalCostsUsd, "externalCostsUsd");
@@ -167,8 +180,17 @@ function evaluateValidMonitorRun(input) {
     "initialDeployedSol"
   );
   const solPriceUsd = asFiniteNumber(input.snapshot.solPriceUsd, "solPriceUsd");
+  const carriedNetPnlUsd = asFiniteNumber(
+    priorState.carriedNetPnlUsd ?? 0,
+    "carriedNetPnlUsd"
+  );
+  const carriedGrossFeeRevenueUsd = asFiniteNumber(
+    priorState.carriedGrossFeeRevenueUsd ?? 0,
+    "carriedGrossFeeRevenueUsd"
+  );
   if (
-    grossFeeRevenueUsd < 0 ||
+    currentPositionGrossFeeRevenueUsd < 0 ||
+    carriedGrossFeeRevenueUsd < 0 ||
     depositsUsd < 0 ||
     withdrawalsUsd < 0 ||
     balanceTokenXUsd < 0 ||
@@ -176,6 +198,7 @@ function evaluateValidMonitorRun(input) {
     tokenXAmount < 0 ||
     tokenYAmount < 0 ||
     activePrice <= 0 ||
+    poolCurrentPrice <= 0 ||
     minPrice <= 0 ||
     maxPrice <= 0 ||
     solPriceUsd <= 0
@@ -187,14 +210,17 @@ function evaluateValidMonitorRun(input) {
     balanceTokenXUsd +
     balanceTokenYUsd +
     withdrawalsUsd +
-    grossFeeRevenueUsd -
+    currentPositionGrossFeeRevenueUsd -
     depositsUsd;
   const accountingToleranceUsd = Math.max(0.5, depositsUsd * 0.001);
   const accountingDifferenceUsd = Math.abs(
     officialPnlUsd - independentlyCalculatedPnlUsd
   );
 
-  const netPnlUsd = officialPnlUsd - externalCostsUsd;
+  const currentPositionNetPnlUsd = officialPnlUsd - externalCostsUsd;
+  const netPnlUsd = carriedNetPnlUsd + currentPositionNetPnlUsd;
+  const grossFeeRevenueUsd =
+    carriedGrossFeeRevenueUsd + currentPositionGrossFeeRevenueUsd;
   const netReturnPct = (netPnlUsd / initialDeployedUsd) * 100;
   const hodlValueUsd = initialDeployedSol * solPriceUsd;
   const strategyValueUsd = initialDeployedUsd + netPnlUsd;
@@ -204,6 +230,9 @@ function evaluateValidMonitorRun(input) {
   const lowerBinId = asFiniteNumber(position.lowerBinId, "lowerBinId");
   const upperBinId = asFiniteNumber(position.upperBinId, "upperBinId");
   const positionWidthBins = upperBinId - lowerBinId + 1;
+  const binIdsAreIntegers = [activeBinId, lowerBinId, upperBinId].every(
+    Number.isInteger
+  );
   const centerDistanceBins = Math.abs(
     activeBinId - asFiniteNumber(config.positionCenterBinId, "positionCenterBinId")
   );
@@ -215,7 +244,18 @@ function evaluateValidMonitorRun(input) {
   );
   const derivedOutOfRange =
     activeBinId < lowerBinId || activeBinId > upperBinId;
+  const centerToLowerEdgeBins = config.positionCenterBinId - lowerBinId;
+  const centerToUpperEdgeBins = upperBinId - config.positionCenterBinId;
+  const centerIsValid =
+    Math.abs(centerToLowerEdgeBins - centerToUpperEdgeBins) <= 1;
   const dataAgeMinutes = (now.getTime() - fetchedAt.getTime()) / 60_000;
+  const crossEndpointPriceDifferencePct =
+    (Math.abs(activePrice - poolCurrentPrice) / poolCurrentPrice) * 100;
+  const redTriggerCount = [
+    centerDistanceBins >= 10,
+    nearestEdgeDistanceBins <= 5,
+    netReturnPct <= config.redLossPct
+  ].filter(Boolean).length;
 
   const reasons = [];
   let status = "GREEN";
@@ -230,8 +270,12 @@ function evaluateValidMonitorRun(input) {
       [tokenXSymbol, tokenYSymbol].includes("SOL")
     ) ||
     positionWidthBins !== 30 ||
+    !binIdsAreIntegers ||
     config.positionCenterBinId < lowerBinId ||
     config.positionCenterBinId > upperBinId ||
+    !centerIsValid ||
+    minPrice >= maxPrice ||
+    crossEndpointPriceDifferencePct > 2 ||
     dataAgeMinutes < 0 ||
     dataAgeMinutes > config.maxDataAgeMinutes ||
     accountingDifferenceUsd > accountingToleranceUsd
@@ -260,11 +304,25 @@ function evaluateValidMonitorRun(input) {
     if (positionWidthBins !== 30) {
       reasons.push("The configured position is not exactly 30 bins wide.");
     }
+    if (!binIdsAreIntegers) {
+      reasons.push("Meteora returned a non-integer bin ID.");
+    }
     if (
       config.positionCenterBinId < lowerBinId ||
       config.positionCenterBinId > upperBinId
     ) {
       reasons.push("The recorded entry center is outside the position bounds.");
+    }
+    if (!centerIsValid) {
+      reasons.push("The recorded entry bin is not centered in the 30-bin range.");
+    }
+    if (minPrice >= maxPrice) {
+      reasons.push("The position price bounds are invalid.");
+    }
+    if (crossEndpointPriceDifferencePct > 2) {
+      reasons.push(
+        "The position and pool endpoints disagree on the current price."
+      );
     }
     if (dataAgeMinutes < 0 || dataAgeMinutes > config.maxDataAgeMinutes) {
       reasons.push("The upstream position data is stale.");
@@ -275,7 +333,8 @@ function evaluateValidMonitorRun(input) {
   } else if (
     position.isOutOfRange ||
     derivedOutOfRange ||
-    netReturnPct <= config.criticalLossPct
+    netReturnPct <= config.criticalLossPct ||
+    redTriggerCount >= 2
   ) {
     status = "CRITICAL";
     if (position.isOutOfRange || derivedOutOfRange) {
@@ -283,6 +342,18 @@ function evaluateValidMonitorRun(input) {
     }
     if (netReturnPct <= config.criticalLossPct) {
       reasons.push("Net loss reached the critical threshold.");
+    }
+    if (redTriggerCount >= 2) {
+      reasons.push("Multiple red safety conditions occurred together.");
+      if (centerDistanceBins >= 10) {
+        reasons.push("The active bin moved at least ten bins from the entry center.");
+      }
+      if (nearestEdgeDistanceBins <= 5) {
+        reasons.push("Five or fewer bins remain to the nearest edge.");
+      }
+      if (netReturnPct <= config.redLossPct) {
+        reasons.push("Net loss reached the red threshold.");
+      }
     }
   } else if (
     centerDistanceBins >= 10 ||
@@ -318,48 +389,65 @@ function evaluateValidMonitorRun(input) {
 
   const currentMonth = getMonth(input.now);
   const currentDate = input.now.slice(0, 10);
-  const priorState = input.priorState ?? {};
-  if (
-    priorState.positionAddress &&
-    priorState.positionAddress !== config.positionAddress
-  ) {
-    throw new Error(
-      "The position address changed without an explicit state rollover"
-    );
-  }
   const baselineMatchesMonth = priorState.month === currentMonth;
   const monthlyBaselineFeesUsd = baselineMatchesMonth
     ? asFiniteNumber(priorState.monthlyBaselineFeesUsd, "monthlyBaselineFeesUsd")
-    : grossFeeRevenueUsd;
+    : status === "DATA_FAILURE"
+      ? null
+      : grossFeeRevenueUsd;
   const monthlyBaselineNetPnlUsd = baselineMatchesMonth
     ? asFiniteNumber(priorState.monthlyBaselineNetPnlUsd, "monthlyBaselineNetPnlUsd")
-    : netPnlUsd;
-  const monthFeeRevenueUsd = grossFeeRevenueUsd - monthlyBaselineFeesUsd;
-  const monthNetPnlUsd = netPnlUsd - monthlyBaselineNetPnlUsd;
+    : status === "DATA_FAILURE"
+      ? null
+      : netPnlUsd;
+  const monthFeeRevenueUsd = Number.isFinite(monthlyBaselineFeesUsd)
+    ? grossFeeRevenueUsd - monthlyBaselineFeesUsd
+    : null;
+  const monthNetPnlUsd = Number.isFinite(monthlyBaselineNetPnlUsd)
+    ? netPnlUsd - monthlyBaselineNetPnlUsd
+    : null;
   const delivery = decideDelivery(status, now, priorState, config);
+  const financialsAreTrusted = status !== "DATA_FAILURE";
 
   const report = {
     status,
     reasons,
-    grossFeeRevenueUsd: roundMoney(grossFeeRevenueUsd),
-    monthFeeRevenueUsd: roundMoney(monthFeeRevenueUsd),
-    netPnlUsd: roundMoney(netPnlUsd),
-    monthNetPnlUsd: roundMoney(monthNetPnlUsd),
-    netReturnPct: roundMoney(netReturnPct),
-    hodlValueUsd: roundMoney(hodlValueUsd),
-    alphaVsHodlUsd: roundMoney(alphaVsHodlUsd),
-    alphaVsHodlPct: roundMoney(alphaVsHodlPct),
-    solPriceUsd: roundMoney(solPriceUsd),
-    positionValueUsd: roundMoney(balanceTokenXUsd + balanceTokenYUsd),
-    tokenXValueUsd: roundMoney(balanceTokenXUsd),
-    tokenYValueUsd: roundMoney(balanceTokenYUsd),
-    tokenXSymbol,
-    tokenYSymbol,
-    tokenXAmount,
-    tokenYAmount,
-    activePrice,
-    minPrice,
-    maxPrice,
+    grossFeeRevenueUsd: financialsAreTrusted
+      ? roundMoney(grossFeeRevenueUsd)
+      : null,
+    currentPositionGrossFeeRevenueUsd: financialsAreTrusted
+      ? roundMoney(currentPositionGrossFeeRevenueUsd)
+      : null,
+    monthFeeRevenueUsd:
+      financialsAreTrusted && Number.isFinite(monthFeeRevenueUsd)
+      ? roundMoney(monthFeeRevenueUsd)
+      : null,
+    netPnlUsd: financialsAreTrusted ? roundMoney(netPnlUsd) : null,
+    currentPositionNetPnlUsd: financialsAreTrusted
+      ? roundMoney(currentPositionNetPnlUsd)
+      : null,
+    monthNetPnlUsd:
+      financialsAreTrusted && Number.isFinite(monthNetPnlUsd)
+      ? roundMoney(monthNetPnlUsd)
+      : null,
+    netReturnPct: financialsAreTrusted ? roundMoney(netReturnPct) : null,
+    hodlValueUsd: financialsAreTrusted ? roundMoney(hodlValueUsd) : null,
+    alphaVsHodlUsd: financialsAreTrusted ? roundMoney(alphaVsHodlUsd) : null,
+    alphaVsHodlPct: financialsAreTrusted ? roundMoney(alphaVsHodlPct) : null,
+    solPriceUsd: financialsAreTrusted ? roundMoney(solPriceUsd) : null,
+    positionValueUsd: financialsAreTrusted
+      ? roundMoney(balanceTokenXUsd + balanceTokenYUsd)
+      : null,
+    tokenXValueUsd: financialsAreTrusted ? roundMoney(balanceTokenXUsd) : null,
+    tokenYValueUsd: financialsAreTrusted ? roundMoney(balanceTokenYUsd) : null,
+    tokenXSymbol: financialsAreTrusted ? tokenXSymbol : null,
+    tokenYSymbol: financialsAreTrusted ? tokenYSymbol : null,
+    tokenXAmount: financialsAreTrusted ? tokenXAmount : null,
+    tokenYAmount: financialsAreTrusted ? tokenYAmount : null,
+    activePrice: financialsAreTrusted ? activePrice : null,
+    poolCurrentPrice: financialsAreTrusted ? poolCurrentPrice : null,
+    minPrice: financialsAreTrusted ? minPrice : null,
+    maxPrice: financialsAreTrusted ? maxPrice : null,
     activeBinId,
     lowerBinId,
     upperBinId,
@@ -390,16 +478,24 @@ function evaluateValidMonitorRun(input) {
           solPriceUsd: report.solPriceUsd
         }
       ].slice(-90);
-  const nextState = {
-    ...priorState,
-    version: 1,
-    positionAddress: config.positionAddress,
-    month: currentMonth,
-    monthlyBaselineFeesUsd,
-    monthlyBaselineNetPnlUsd,
-    dailySnapshots,
-    lastStatus: status
-  };
+  const nextState =
+    status === "DATA_FAILURE"
+      ? {
+          ...priorState,
+          lastStatus: status
+        }
+      : {
+          ...priorState,
+          version: 1,
+          positionAddress: config.positionAddress,
+          month: currentMonth,
+          monthlyBaselineFeesUsd,
+          monthlyBaselineNetPnlUsd,
+          dailySnapshots,
+          lastStatus: status,
+          lastNetPnlUsd: report.netPnlUsd,
+          lastGrossFeeRevenueUsd: report.grossFeeRevenueUsd
+        };
   if (delivery.shouldDeliver) {
     nextState.lastDeliveredAt = now.toISOString();
   }
@@ -426,8 +522,10 @@ export function evaluateMonitorRun(input) {
       status: "DATA_FAILURE",
       reasons: [error instanceof Error ? error.message : String(error)],
       grossFeeRevenueUsd: null,
+      currentPositionGrossFeeRevenueUsd: null,
       monthFeeRevenueUsd: null,
       netPnlUsd: null,
+      currentPositionNetPnlUsd: null,
       monthNetPnlUsd: null,
       netReturnPct: null,
       hodlValueUsd: null,
@@ -442,6 +540,7 @@ export function evaluateMonitorRun(input) {
       tokenXAmount: null,
       tokenYAmount: null,
       activePrice: null,
+      poolCurrentPrice: null,
       minPrice: null,
       maxPrice: null,
       activeBinId: null,

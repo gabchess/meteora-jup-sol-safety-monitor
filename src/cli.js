@@ -85,8 +85,13 @@ async function runTelegramChatId() {
   }
 }
 
-async function runLive() {
+async function runLive({ initialize = false } = {}) {
   const config = loadConfig();
+  if (initialize && process.env.INITIALIZE_CONFIRMED !== "yes") {
+    throw new Error(
+      "Set INITIALIZE_CONFIRMED=yes only after reconciling the live dry run with Meteora"
+    );
+  }
   const now = new Date();
   let priorState;
   let stateError;
@@ -94,7 +99,14 @@ async function runLive() {
   let snapshotError;
 
   try {
-    priorState = await loadMonitorState(config.statePath);
+    priorState = await loadMonitorState(config.statePath, {
+      required: !initialize
+    });
+    if (initialize && priorState !== null) {
+      throw new Error(
+        "Monitor state already exists; initialization cannot overwrite financial history"
+      );
+    }
   } catch (error) {
     stateError = error instanceof Error ? error.message : String(error);
   }
@@ -116,10 +128,15 @@ async function runLive() {
   });
   process.stdout.write(`${result.message}\n`);
 
-  if (result.delivery.shouldDeliver) {
+  const shouldDeliver = initialize || result.delivery.shouldDeliver;
+  if (shouldDeliver) {
     await sendTelegramMessage(config, result.message);
+    result.nextState.lastDeliveredAt = now.toISOString();
   }
-  if (!stateError) {
+  if (
+    !stateError &&
+    !(initialize && result.report.status === "DATA_FAILURE")
+  ) {
     await saveMonitorState(config.statePath, result.nextState);
   }
 
@@ -141,6 +158,18 @@ async function runRollover() {
   if (priorState.positionAddress === config.positionAddress) {
     throw new Error("POSITION_ADDRESS is still the old position; nothing to roll over");
   }
+  const carriedNetPnlUsd = Number(priorState.lastNetPnlUsd);
+  const carriedGrossFeeRevenueUsd = Number(
+    priorState.lastGrossFeeRevenueUsd
+  );
+  if (
+    !Number.isFinite(carriedNetPnlUsd) ||
+    !Number.isFinite(carriedGrossFeeRevenueUsd)
+  ) {
+    throw new Error(
+      "The old position has no final PnL snapshot. Run the monitor and record the final report before rollover"
+    );
+  }
 
   const rolledOverAt = new Date().toISOString();
   const nextState = {
@@ -156,9 +185,16 @@ async function runRollover() {
         finalMonthlyBaselineFeesUsd:
           priorState.monthlyBaselineFeesUsd ?? null,
         finalMonthlyBaselineNetPnlUsd:
-          priorState.monthlyBaselineNetPnlUsd ?? null
+          priorState.monthlyBaselineNetPnlUsd ?? null,
+        finalNetPnlUsd: carriedNetPnlUsd,
+        finalGrossFeeRevenueUsd: carriedGrossFeeRevenueUsd
       }
     ],
+    carriedNetPnlUsd,
+    carriedGrossFeeRevenueUsd,
+    month: priorState.month,
+    monthlyBaselineFeesUsd: priorState.monthlyBaselineFeesUsd,
+    monthlyBaselineNetPnlUsd: priorState.monthlyBaselineNetPnlUsd,
     dailySnapshots: Array.isArray(priorState.dailySnapshots)
       ? priorState.dailySnapshots
       : [],
@@ -195,13 +231,17 @@ async function main() {
     await runLive();
     return;
   }
+  if (command === "initialize") {
+    await runLive({ initialize: true });
+    return;
+  }
   if (command === "rollover") {
     await runRollover();
     return;
   }
 
   throw new Error(
-    "Usage: npm run report -- <fixture|dry-run|telegram-chat-id|delivery-test|run|rollover> [options]"
+    "Usage: npm run report -- <fixture|dry-run|telegram-chat-id|delivery-test|initialize|run|rollover> [options]"
   );
 }
 
