@@ -15,5 +15,4 @@ A positive fee number is not profit when net PnL is negative.
 
 ## Safety rule
 
-The monitor may recommend an action but may never hold a wallet key, sign a transaction, or trade. Gabe reviews every alert and signs every action from his mobile wallet.
-
+The monitor may recommend an action but may never hold a wallet key, sign a transaction, or trade. The operator reviews every alert and signs every action from a mobile wallet.

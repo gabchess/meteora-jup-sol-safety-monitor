@@ -39,7 +39,7 @@ test("configuration enforces the 19.88 SOL-equivalent capital ceiling", () => {
     () =>
       loadConfig({
         ...validEnvironment,
-        INITIAL_DEPLOYED_SOL: "20.38"
+        INITIAL_DEPLOYED_SOL: "20"
       }),
     /19\.88 SOL-equivalent strategy ceiling/
   );

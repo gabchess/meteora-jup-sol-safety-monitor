@@ -2,18 +2,19 @@
 
 ## The plan in one minute
 
-You have 20.38 SOL. We are using the full strategy budget, not the full wallet.
+Choose an operating reserve and a maximum strategy budget before opening the
+position.
 
-- At least 0.50 SOL stays outside the position.
-- Up to 19.88 SOL-equivalent pays for the position and its entry costs.
+- The operating reserve always stays outside the position.
+- The strategy budget includes the position and all entry costs.
 - The position uses JUP-SOL BS80.
 - It uses one Spot range with 30 bins.
 - The range starts centered on the live price.
 - Telegram watches. You act.
 
-Think of the 0.50 SOL as untouchable operating cash. If the final wallet
-preview would leave 0.49 SOL, make the deposit smaller. Do not deposit 19.88
-blindly and discover that fees used part of the reserve.
+Write down the reserve before starting. If the final wallet preview would
+leave less, make the deposit smaller. Do not enter the maximum deposit blindly
+and discover that fees used part of the reserve.
 
 This plan aims to make monthly USD profit. It cannot make loss impossible.
 JUP and SOL can fall, the position can underperform holding SOL, contracts and
@@ -69,9 +70,9 @@ unset TELEGRAM_BOT_TOKEN
 The command prints a line such as `Chat ID: 123456789`. It does not print the
 bot token.
 
-### 3. Save the Telegram values in private GitHub secrets
+### 3. Save the Telegram values in GitHub secrets
 
-1. Open the private repository on GitHub.
+1. Open the repository on GitHub.
 2. Go to **Settings → Secrets and variables → Actions**.
 3. Under **Secrets**, create `TELEGRAM_BOT_TOKEN`.
 4. Paste the token as its value.
@@ -100,9 +101,10 @@ change.
 
 Before opening Meteora:
 
-1. Confirm the wallet shows 20.38 SOL.
-2. Write down the hard floor: `0.50 SOL`.
-3. Remember that 19.88 SOL-equivalent is a ceiling, not a required input.
+1. Confirm the wallet balance.
+2. Write down the operating-reserve floor.
+3. Write down the maximum strategy spend. It is a ceiling, not a required
+   input.
 4. Include swap cost, slippage, and Solana fees inside that ceiling.
 
 ### 2. Open only the approved pool
@@ -164,7 +166,8 @@ Before signing, check:
 - Spot strategy and 30-bin width.
 - Estimated SOL left in the wallet after every entry transaction.
 
-The last number must be at least 0.50 SOL. Lower the deposit until it is.
+The last number must be at least the operating reserve. Lower the deposit
+until it is.
 
 ### 6. Sign and record the facts
 
@@ -175,27 +178,28 @@ After confirmation, record:
 - Public wallet address.
 - Public Meteora position address.
 - Entry-center bin ID.
-- Actual SOL-equivalent deployed, at most 19.88.
+- Actual SOL-equivalent deployed, at most the configured strategy ceiling.
 - USD value of the deployed capital at entry.
 - Swap, Meteora, and network costs in USD.
 - Transaction signature for your own records.
 
 ## Phase 3: connect the live position to the monitor
 
-In the private GitHub repository, add these under **Settings → Secrets and
-variables → Actions → Variables**:
+In the GitHub repository, add these under **Settings → Secrets and variables
+→ Actions → Variables**:
 
 | Variable | What to enter |
 | --- | --- |
 | `WALLET_ADDRESS` | Your public Solana wallet address |
 | `POSITION_ADDRESS` | The new public Meteora position address |
 | `POSITION_CENTER_BIN_ID` | The active bin you recorded at entry |
-| `INITIAL_DEPLOYED_SOL` | Actual SOL-equivalent used, no more than 19.88 |
+| `INITIAL_DEPLOYED_SOL` | Actual SOL-equivalent used, no more than the configured ceiling |
 | `INITIAL_DEPLOYED_USD` | Actual USD value at entry |
 | `EXTERNAL_COSTS_USD` | Entry costs not included in Meteora PnL |
 | `MONITOR_ENABLED` | `false` until initialization is complete |
 
-Do not round the deployed amount up to 19.88 if you used less.
+Record the amount that was actually deployed. Do not round it up to the
+strategy ceiling.
 
 ### 1. Run the safe dry run
 
@@ -329,7 +333,7 @@ Changing the address without the explicit rollover makes the monitor emit
 
 Stop and inspect before signing if:
 
-- The wallet would retain less than 0.50 SOL.
+- The wallet would retain less than the operating reserve.
 - The pool address, pair, or BS80 setting differs.
 - The range is not exactly 30 bins.
 - The range is not centered on the live active bin.
