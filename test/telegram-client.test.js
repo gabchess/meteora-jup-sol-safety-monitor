@@ -107,13 +107,13 @@ test("Telegram chat lookup returns unique chat IDs after the owner messages the 
           {
             update_id: 1,
             message: {
-              chat: { id: 987654, type: "private", first_name: "Gabe" }
+              chat: { id: 987654, type: "private", first_name: "Operator" }
             }
           },
           {
             update_id: 2,
             message: {
-              chat: { id: 987654, type: "private", first_name: "Gabe" }
+              chat: { id: 987654, type: "private", first_name: "Operator" }
             }
           }
         ]
@@ -123,5 +123,7 @@ test("Telegram chat lookup returns unique chat IDs after the owner messages the 
 
   const chats = await fetchTelegramChatIds(config, { fetchImpl });
 
-  assert.deepEqual(chats, [{ id: "987654", type: "private", name: "Gabe" }]);
+  assert.deepEqual(chats, [
+    { id: "987654", type: "private", name: "Operator" }
+  ]);
 });
