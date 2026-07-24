@@ -48,7 +48,7 @@ const baseInput = {
       allTimeFees: { total: { usd: "45" } },
       unrealizedPnl: {
         balanceTokenX: { amount: "1000", usd: "700" },
-        balanceTokenY: { amount: "10.666666", usd: "800" },
+        balanceTokenY: { amount: "10.666666", usd: "790" },
         unclaimedFeeTokenX: { amount: "5", usd: "3.50" },
         unclaimedFeeTokenY: { amount: "0.086666", usd: "6.50" }
       }
@@ -98,11 +98,32 @@ test("a healthy position reports revenue, profit, return, and HODL comparison se
       tokenXAmount: 1005,
       tokenYSymbol: "SOL",
       tokenYAmount: 10.753332,
-      positionValueUsd: 1510,
+      positionValueUsd: 1500,
       recommendedAction: "No change. Continue monitoring.",
       shouldDeliver: true
     }
   );
+});
+
+test("unclaimed fees are included in the independent PnL check", () => {
+  const input = structuredClone(baseInput);
+  input.snapshot.position.pnlUsd = "-20.673300280617468";
+  input.snapshot.position.allTimeDeposits.total.usd = "1399.287694968667";
+  input.snapshot.position.allTimeFees.total.usd = "0";
+  input.snapshot.position.unrealizedPnl.balanceTokenX.usd =
+    "551.3583551884253";
+  input.snapshot.position.unrealizedPnl.balanceTokenY.usd = "825.660268596808";
+  input.snapshot.position.unrealizedPnl.unclaimedFeeTokenX.usd =
+    "0.6880233327568398";
+  input.snapshot.position.unrealizedPnl.unclaimedFeeTokenY.usd =
+    "0.9077475700595008";
+
+  const result = evaluateMonitorRun(input);
+
+  assert.equal(result.report.status, "YELLOW");
+  assert.equal(result.report.netPnlUsd, -25.67);
+  assert.equal(result.report.unclaimedFeeValueUsd, 1.6);
+  assert.doesNotMatch(result.report.reasons.join(" "), /independent PnL/i);
 });
 
 test("positive fees never hide a negative net result", () => {
@@ -110,7 +131,7 @@ test("positive fees never hide a negative net result", () => {
   input.snapshot.position.pnlUsd = "-20";
   input.snapshot.position.allTimeFees.total.usd = "60";
   input.snapshot.position.unrealizedPnl.balanceTokenX.usd = "650";
-  input.snapshot.position.unrealizedPnl.balanceTokenY.usd = "770";
+  input.snapshot.position.unrealizedPnl.balanceTokenY.usd = "760";
 
   const result = evaluateMonitorRun(input);
 
@@ -126,13 +147,13 @@ test("all-time fees are reported once and never added on top of PnL", () => {
   input.snapshot.position.pnlUsd = "20";
   input.snapshot.position.allTimeFees.total.usd = "60";
   input.snapshot.position.unrealizedPnl.balanceTokenX.usd = "650";
-  input.snapshot.position.unrealizedPnl.balanceTokenY.usd = "810";
+  input.snapshot.position.unrealizedPnl.balanceTokenY.usd = "800";
 
   const result = evaluateMonitorRun(input);
 
   assert.equal(result.report.grossFeeRevenueUsd, 60);
   assert.equal(result.report.netPnlUsd, 15);
-  assert.equal(result.report.positionValueUsd, 1470);
+  assert.equal(result.report.positionValueUsd, 1460);
   assert.equal(result.report.unclaimedFeeValueUsd, 10);
   assert.notEqual(result.report.netPnlUsd, 75);
 });
@@ -140,17 +161,17 @@ test("all-time fees are reported once and never added on top of PnL", () => {
 test("noise, red loss, and critical loss thresholds are distinct", () => {
   const noise = structuredClone(baseInput);
   noise.snapshot.position.pnlUsd = "-1";
-  noise.snapshot.position.unrealizedPnl.balanceTokenY.usd = "754";
+  noise.snapshot.position.unrealizedPnl.balanceTokenY.usd = "744";
   assert.equal(evaluateMonitorRun(noise).report.status, "GREEN");
 
   const red = structuredClone(baseInput);
   red.snapshot.position.pnlUsd = "-30";
-  red.snapshot.position.unrealizedPnl.balanceTokenY.usd = "725";
+  red.snapshot.position.unrealizedPnl.balanceTokenY.usd = "715";
   assert.equal(evaluateMonitorRun(red).report.status, "RED");
 
   const critical = structuredClone(baseInput);
   critical.snapshot.position.pnlUsd = "-80";
-  critical.snapshot.position.unrealizedPnl.balanceTokenY.usd = "675";
+  critical.snapshot.position.unrealizedPnl.balanceTokenY.usd = "665";
   assert.equal(evaluateMonitorRun(critical).report.status, "CRITICAL");
 });
 

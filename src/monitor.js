@@ -174,6 +174,8 @@ function evaluateValidMonitorRun(input) {
     position.unrealizedPnl.unclaimedFeeTokenY.usd,
     "unclaimedFeeTokenY.usd"
   );
+  const unclaimedFeeValueUsd =
+    unclaimedFeeTokenXUsd + unclaimedFeeTokenYUsd;
   const unclaimedFeeTokenXAmount = asFiniteNumber(
     position.unrealizedPnl.unclaimedFeeTokenX.amount,
     "unclaimedFeeTokenX.amount"
@@ -235,7 +237,8 @@ function evaluateValidMonitorRun(input) {
     balanceTokenXUsd +
     balanceTokenYUsd +
     withdrawalsUsd +
-    currentPositionGrossFeeRevenueUsd -
+    currentPositionGrossFeeRevenueUsd +
+    unclaimedFeeValueUsd -
     depositsUsd;
   const accountingToleranceUsd = Math.max(0.5, depositsUsd * 0.001);
   const accountingDifferenceUsd = Math.abs(
@@ -438,8 +441,6 @@ function evaluateValidMonitorRun(input) {
     tokenXAmount + unclaimedFeeTokenXAmount;
   const withdrawableTokenYAmount =
     tokenYAmount + unclaimedFeeTokenYAmount;
-  const unclaimedFeeValueUsd =
-    unclaimedFeeTokenXUsd + unclaimedFeeTokenYUsd;
   const positionValueUsd =
     balanceTokenXUsd + balanceTokenYUsd + unclaimedFeeValueUsd;
 
