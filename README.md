@@ -111,11 +111,6 @@ operator manually closes or moves the position:
 
 The rollover command changes monitor state only. It cannot touch the wallet.
 
-## Operating guide
-
-Read [the ELI5 setup and phone playbook](docs/ELI5-OPERATING-GUIDE.md) before
-deploying capital or changing a live position.
-
 ## Source contracts
 
 - [Meteora position PnL API](https://docs.meteora.ag/api-reference/dlmm/positions/get-position-pnl-data-open-and-closed-positions-with-on-the-fly-calculation)
