@@ -33,9 +33,9 @@
       "solPriceUsd": 74.14
     }
   ],
-  "lastStatus": "RED",
-  "lastNetPnlUsd": -28.15,
+  "lastStatus": "YELLOW",
+  "lastNetPnlUsd": -22.12,
   "lastGrossFeeRevenueUsd": 0,
-  "lastDeliveredAt": "2026-07-25T12:11:46.901Z",
+  "lastDeliveredAt": "2026-07-25T15:31:44.596Z",
   "lastHeartbeatDate": "2026-07-23"
 }
