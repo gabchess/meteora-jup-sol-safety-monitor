@@ -49,10 +49,19 @@
       "grossFeeRevenueUsd": 0,
       "alphaVsHodlUsd": 11.59,
       "solPriceUsd": 76.41
+    },
+    {
+      "date": "2026-07-28",
+      "checkedAt": "2026-07-28T03:42:07.319Z",
+      "status": "RED",
+      "netPnlUsd": -42.39,
+      "grossFeeRevenueUsd": 0,
+      "alphaVsHodlUsd": 7.48,
+      "solPriceUsd": 73.26
     }
   ],
   "lastStatus": "RED",
-  "lastNetPnlUsd": -33.87,
+  "lastNetPnlUsd": -42.39,
   "lastGrossFeeRevenueUsd": 0,
   "lastDeliveredAt": "2026-07-27T23:30:03.819Z",
   "lastHeartbeatDate": "2026-07-27"
